@@ -1,20 +1,22 @@
 import pandas as pd
 import numpy as np
 
-from config import INDICES, TIMEFRAMES
+from config import TIMEFRAMES_DAYS, X_INDEX_RANGE_START, X_INDEX_RANGE_END
 
 
-def calculate_trend_lines(df: pd.DataFrame, timeframe: int, step: int) -> tuple[tuple[np.ndarray, np.ndarray], list[float]]:
+def calculate_trend_lines(df: pd.DataFrame, timeframe: int, step: int) -> tuple[
+    tuple[np.ndarray, np.ndarray],
+    list[float]
+]:
     """
     Calculate trend lines over a given frame.
 
     """
-    maxim = []
-    minim = []
     ind_min = []
     ind_max = []
     trendlines_idx = []
     trendlines = []
+    x_vals = np.arange(X_INDEX_RANGE_START, X_INDEX_RANGE_END)
     mavg_df = df[['Open', 'Close']].rolling(window=3).mean()
     for i in range(len(df) - timeframe - 1, len(df), step):
         # Ensure the slice doesn't exceed bounds
@@ -27,14 +29,12 @@ def calculate_trend_lines(df: pd.DataFrame, timeframe: int, step: int) -> tuple[
 
         trendlines.append(mid_price)
         trendlines_idx.append(mavg_df.index[i])
-        minim.append(df.Close.iloc[i:i + step].min())
         ind_min.append(df.Close.iloc[i:i + step].idxmin())
-        maxim.append(df.Close.iloc[i:i + step].max())
         ind_max.append(df.Close.iloc[i:i + step].idxmax())
 
     # Fit a first-degree polynomial (a straight line) to the data
     if len(trendlines_idx) < 2:
-        return (np.zeros(len(INDICES)), np.zeros(len(INDICES))), [0, 0]
+        return (np.zeros(len(x_vals)), np.zeros(len(x_vals))), [0, 0]
 
     coeffs = np.polyfit(trendlines_idx, trendlines, 1)
 
@@ -52,8 +52,8 @@ def calculate_trend_lines(df: pd.DataFrame, timeframe: int, step: int) -> tuple[
         for i in ind_max
     ]
 
-    y_min = INDICES * coeffs[0] + coeffs[1] - max(fit_residuals_at_minima)
-    y_max = INDICES * coeffs[0] + coeffs[1] + max(fit_residuals_at_maxima)
+    y_min = x_vals * coeffs[0] + coeffs[1] - max(fit_residuals_at_minima)
+    y_max = x_vals * coeffs[0] + coeffs[1] + max(fit_residuals_at_maxima)
     y_mid = (timeframe + len(df)) * coeffs[0] + coeffs[1]
     y_preds = [y_mid - max(fit_residuals_at_minima), y_mid + max(fit_residuals_at_maxima)]
 
@@ -69,9 +69,8 @@ def predictions(df: pd.DataFrame, step: int) -> tuple[list[list[float]], list[tu
     """
     y_values = []
     lines_coords = []
-    for timeframe in TIMEFRAMES:
+    for timeframe in TIMEFRAMES_DAYS:
         line_coords, y_preds = calculate_trend_lines(df, timeframe, step)
         y_values.append(y_preds)
         lines_coords.append(line_coords)
     return y_values, lines_coords
-

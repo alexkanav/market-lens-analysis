@@ -2,15 +2,15 @@ import numpy as np
 from scipy.signal import argrelextrema, find_peaks
 from sklearn.neighbors import KernelDensity
 
-from config import PEAKS_RANGE
+from config import PEAKS_MIN, PEAKS_MAX
 
 
-def support_resistance_lines(close_df: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def support_resistance_lines(close_prices: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """
     Estimate support and resistance levels from price data using kernel density estimation.
 
     Parameters:
-    - close_df (np.ndarray): Array of closing prices.
+    - close_prices (np.ndarray): Array of closing prices.
 
     Returns:
     - Tuple (np.ndarray, np.ndarray):
@@ -18,11 +18,11 @@ def support_resistance_lines(close_df: np.ndarray) -> tuple[np.ndarray, np.ndarr
         - ext_prices: Combined local maxima and minima prices used for KDE estimation.
     """
     num_peaks = -999  # Initialize number of peaks to a dummy out-of-range value
-    maxima = argrelextrema(close_df, np.greater)  # find_peaks(max)
-    minima = argrelextrema(close_df, np.less)  # find_peaks(min)
+    maxima = argrelextrema(close_prices, np.greater)  # find_peaks(max)
+    minima = argrelextrema(close_prices, np.less)  # find_peaks(min)
 
     # Combine extrema prices into a single array for density estimation
-    ext_prices = np.concatenate((close_df[maxima], close_df[minima]))
+    ext_prices = np.concatenate((close_prices[maxima], close_prices[minima]))
 
     if ext_prices.size == 0:
         return np.array([]), np.array([])
@@ -32,7 +32,10 @@ def support_resistance_lines(close_df: np.ndarray) -> tuple[np.ndarray, np.ndarr
     bandwidth = interval
 
     # Tune the bandwidth until the number of peaks in the KDE is within a desired range
-    while num_peaks < PEAKS_RANGE[0] or num_peaks > PEAKS_RANGE[1]:
+    for _ in range(50):
+        if PEAKS_MIN <= num_peaks <= PEAKS_MAX:
+            break
+        # while num_peaks < PEAKS_MIN or num_peaks > PEAKS_MAX:
         # Apply Kernel Density Estimation with current bandwidth
         kde = KernelDensity(kernel='gaussian', bandwidth=bandwidth).fit(ext_prices.reshape(-1, 1))
 
@@ -53,4 +56,3 @@ def support_resistance_lines(close_df: np.ndarray) -> tuple[np.ndarray, np.ndarr
             break
 
     return price_range[peaks], ext_prices
-
