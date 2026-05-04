@@ -41,9 +41,9 @@ Charts are saved locally for further analysis or reporting.
 
 ---
 ## Screenshots
-![Chart Example](Line_chart.jpg)
-![screenshot_2](Candle_chart.jpg)
-![screenshot_3](Support_resistance.jpg)
+![Candle chart](https://github.com/user-attachments/assets/ec524588-1aa4-4c4d-815c-3f4a1ff62c6c)
+![Support Resistance](https://github.com/user-attachments/assets/55d597cc-4cc2-4861-8cc8-c3be4f2338d1)
+![Line chart](https://github.com/user-attachments/assets/24332f98-ebea-425f-b464-8c455db9c7f6)
 
 ---
 ## How It Works
@@ -63,19 +63,19 @@ Visualization → Charts
         ↓
 Write Results → Google Sheets
 ```
-
 ---
 ## Installation
 ### Clone the repository:
 ```bash
-git clone https://github.com/alexkanav/Market-Lens-python
-cd Market-Lens-python
+git clone https://github.com/alexkanav/market-lens-analysis
+cd market-lens-analysis
 ```
 ### Create and activate a virtual environment
 ```bash
 python -m venv venv
 
 # Linux / macOS
+
 source venv/bin/activate
 
 # Windows
