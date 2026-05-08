@@ -1,86 +1,90 @@
 import pytest
-from unittest.mock import patch, MagicMock
-from googleapiclient.errors import HttpError
+from unittest.mock import Mock, patch
 
-from utils.sheets import GoogleSheets
-
-
-# Test initialization of GoogleSheets class
-@patch('utils.sheets.ServiceAccountCredentials.from_json_keyfile_name')
-@patch('utils.sheets.httplib2.Http')
-@patch('utils.sheets.build')
-def test_initialization(mock_build, mock_http, mock_credentials):
-    # Mock ServiceAccountCredentials
-    mock_credentials.return_value = MagicMock()
-
-    # Mock Http() instance
-    mock_http_instance = MagicMock()
-    mock_http.return_value = mock_http_instance
-
-    # Mock the `authorize()` method on the credentials object to return the mock_http_instance
-    mock_credentials.return_value.authorize.return_value = mock_http_instance
-
-    # Mock the service object returned by the `build` function
-    mock_service = MagicMock()
-    mock_build.return_value = mock_service
-
-    # Initialize GoogleSheets with a mock key file
-    key_file = 'mock_key.json'
-    google_sheets = GoogleSheets(key_file)
-
-    # Assert that the `build()` method was called with the correct parameters
-    mock_build.assert_called_once_with('sheets', 'v4', http=mock_http_instance)
+from integrations.google_sheets import GoogleSheets
 
 
-# Test get_stock_name_from_google method
-@patch('utils.sheets.ServiceAccountCredentials.from_json_keyfile_name')
-@patch('utils.sheets.httplib2.Http')
-@patch('utils.sheets.build')
-def test_get_stock_name_from_google(mock_build, mock_http, mock_credentials):
-    # Mocking the Google Sheets API response
-    mock_credentials.return_value = MagicMock()
-    mock_http.return_value = MagicMock()
-    mock_service = MagicMock()
-    mock_build.return_value = mock_service
+@pytest.fixture
+def sheets(mock_service):
+    with patch("integrations.google_sheets.Credentials.from_service_account_file"), \
+            patch("integrations.google_sheets.build", return_value=mock_service):
+        return GoogleSheets(
+            key_file="fake.json",
+            gsheet_id="sheet123",
+            read_range="A1:A10",
+            write_start="B1"
+        )
 
-    mock_sheet = MagicMock()
-    mock_service.spreadsheets().values().get().execute.return_value = {
-        'values': [['AAPL'], ['GOOG'], ['CAT']]
+
+@pytest.mark.parametrize("value, expected", [
+    ({"values": [["AAPL"], ["TSLA"]]}, [["AAPL"], ["TSLA"]]),
+    ({}, []),
+])
+def test_get_tickers__valid_response__returns_values(sheets, mock_service, value, expected):
+    mock_service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = value
+
+    with patch("integrations.google_sheets.retry", side_effect=lambda fn, r: fn()):
+        result = sheets.get_tickers()
+
+    assert result == expected
+
+
+def test_get_tickers__none_response__raises_exception(sheets, mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.get.return_value.execute.return_value = None
+
+    with patch("integrations.google_sheets.retry", side_effect=lambda fn, r: fn()):
+        with pytest.raises(Exception):
+            sheets.get_tickers()
+
+
+def test_get_tickers__missing_values_key__returns_empty_list(sheets, mock_service):
+    values_api = mock_service.spreadsheets.return_value.values.return_value
+    values_api.get.return_value.execute.return_value = {"range": "A1:A10"}
+
+    with patch("integrations.google_sheets.retry", side_effect=lambda fn, r: fn()):
+        result = sheets.get_tickers()
+
+    assert result == []
+
+
+def test_write_values__valid_values__executes_batch_update(sheets, mock_service):
+    mock_execute = Mock()
+
+    mock_service.spreadsheets.return_value.values.return_value.batchUpdate.return_value.execute = mock_execute
+
+    with patch("integrations.google_sheets.retry", side_effect=lambda fn, r: fn()):
+        sheets.write_values([["AAPL", 100]])
+
+    mock_execute.assert_called_once()
+
+
+def test_write_values__empty_values__does_not_call_retry(sheets):
+    with patch("integrations.google_sheets.retry") as mock_retry:
+        sheets.write_values([])
+
+    mock_retry.assert_not_called()
+
+
+def test_write_values__batch_update_failure__raises_exception(sheets, mock_service):
+    mock_service.spreadsheets.return_value.values.return_value.batchUpdate.side_effect = Exception("Write error")
+
+    with patch("integrations.google_sheets.retry", side_effect=lambda fn, r: fn()):
+        with pytest.raises(Exception):
+            sheets.write_values([["AAPL", 100]])
+
+
+def test_save_predictions__valid_data__formats_and_writes_values(sheets):
+    data = {
+        "AAPL": [[1.1, 2.2], [3.3]],
+        "TSLA": [[4.4]]
     }
 
-    google_sheets = GoogleSheets('mock_key.json')
+    with patch.object(sheets, "write_values") as mock_write:
+        sheets.save_predictions(data)
 
-    # Call the function to get stock names from the sheet
-    stock_names = google_sheets.get_stock_name_from_google('mock_gsheet_id', 'Sheet1!A1:A3')
+    expected = [
+        ["AAPL", 1.1, 2.2, 3.3],
+        ["TSLA", 4.4]
+    ]
 
-    # Assert the response is as expected
-    assert stock_names == [['AAPL'], ['GOOG'], ['CAT']]
-
-    # Check that the correct API method was called
-    mock_service.spreadsheets().values().get().execute.assert_called_once()
-
-
-# Test error handling in get_stock_name_from_google
-@patch('utils.sheets.ServiceAccountCredentials.from_json_keyfile_name')
-@patch('utils.sheets.httplib2.Http')
-@patch('utils.sheets.build')
-def test_get_stock_name_from_google_error(mock_build, mock_http, mock_credentials):
-    # Mocking the Google Sheets API to raise an exception
-    mock_credentials.return_value = MagicMock()
-    mock_http.return_value = MagicMock()
-    mock_service = MagicMock()
-    mock_build.return_value = mock_service
-
-    mock_service.spreadsheets().values().get().execute.side_effect = HttpError(
-        resp=MagicMock(status=500), content=b'Error'
-    )
-
-    google_sheets = GoogleSheets('mock_key.json')
-
-    # Call the function and expect an empty list on error
-    stock_names = google_sheets.get_stock_name_from_google('mock_gsheet_id', 'Sheet1!A1:A3')
-
-    # Assert that an empty list is returned in case of an error
-    assert stock_names == []
-
-
+    mock_write.assert_called_once_with(expected, 3)
